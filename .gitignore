@@ -1,0 +1,8 @@
+node_modules/
+dist/
+out/
+public/audio/
+public/story.json
+*.mp4
+*.mp3
+.DS_Store

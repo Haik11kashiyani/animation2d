@@ -1,0 +1,93 @@
+name: "🎬 Generate Animation Video"
+
+on:
+  workflow_dispatch:
+    inputs:
+      topic:
+        description: "Story topic (leave empty for random)"
+        required: false
+        default: ""
+        type: string
+
+# Cancel in-progress runs of the same workflow
+concurrency:
+  group: animation-render
+  cancel-in-progress: true
+
+jobs:
+  render:
+    name: "🎭 Generate & Render 2D Animation"
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+
+    steps:
+      - name: "📥 Checkout repository"
+        uses: actions/checkout@v4
+
+      - name: "📦 Setup Node.js 20"
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: "🔧 Install dependencies"
+        run: npm ci
+
+      - name: "🎙️ Install edge-tts (Python TTS)"
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq python3-pip ffmpeg
+          pip3 install edge-tts --quiet
+
+      - name: "🎬 Run full render pipeline"
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          STORY_TOPIC: ${{ github.event.inputs.topic }}
+        run: |
+          echo "🎬 Starting animation pipeline..."
+          echo "📝 Topic: ${STORY_TOPIC:-Random AI-generated story}"
+          node scripts/render-video.mjs
+
+      - name: "📊 Video info"
+        if: success()
+        run: |
+          if [ -f "out/video.mp4" ]; then
+            echo "✅ Video generated successfully!"
+            ls -lh out/video.mp4
+            # Get video info with ffprobe
+            ffprobe -v quiet -print_format json -show_format -show_streams out/video.mp4 | head -50 || true
+          else
+            echo "❌ Video file not found!"
+            exit 1
+          fi
+
+      - name: "📤 Upload video artifact"
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: "animation-video-${{ github.run_number }}"
+          path: out/video.mp4
+          retention-days: 90
+          if-no-files-found: error
+
+      - name: "📤 Upload story data (debug)"
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: "story-data-${{ github.run_number }}"
+          path: |
+            public/story.json
+            public/audio/timing.json
+          retention-days: 30
+          if-no-files-found: warn
+
+      - name: "🎉 Summary"
+        if: success()
+        run: |
+          STORY_TITLE=$(cat public/story.json | python3 -c "import sys,json;print(json.load(sys.stdin).get('title','Unknown'))" 2>/dev/null || echo "Unknown")
+          echo "## 🎬 Animation Rendered Successfully!" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Title:** ${STORY_TITLE}" >> $GITHUB_STEP_SUMMARY
+          echo "**Topic:** ${{ github.event.inputs.topic || 'AI-generated random story' }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "📥 Download the video from the **Artifacts** section above." >> $GITHUB_STEP_SUMMARY
