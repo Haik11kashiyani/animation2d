@@ -69,17 +69,21 @@ async function main() {
   }
 
   // Step 3: Render video with Remotion
+  // Pass totalFrames as input props so the composition knows its duration
+  const inputProps = JSON.stringify({ totalFrames: timing.totalFrames });
   const renderCommand = [
     'npx remotion render',
     'StoryVideo',
     'out/video.mp4',
-    `--frames=0-${timing.totalFrames - 1}`,
     '--codec=h264',
-    '--crf=18',              // High quality
-    '--pixel-format=yuv420p', // Maximum compatibility
+    '--crf=18',
+    '--pixel-format=yuv420p',
     '--log=verbose',
-    '--concurrency=2',       // Use 2 threads (safe for CI)
-    '--timeout=60000',       // 60s timeout per frame
+    '--gl=angle',              // Required for headless CI (no GPU)
+    '--concurrency=1',         // Single thread to avoid OOM on CI
+    '--timeout=90000',         // 90s timeout per frame (CI is slow)
+    '--ignore-certificate-errors',
+    '--disable-web-security',
   ].join(' ');
 
   run(renderCommand, 'Step 3/3 — Rendering 2D Animation Video (Remotion)');

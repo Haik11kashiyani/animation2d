@@ -18,7 +18,7 @@ jobs:
   render:
     name: "🎭 Generate & Render 2D Animation"
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 40
 
     steps:
       - name: "📥 Checkout repository"
@@ -33,11 +33,13 @@ jobs:
       - name: "🔧 Install dependencies"
         run: npm ci
 
-      - name: "🎙️ Install edge-tts (Python TTS)"
+      - name: "🎙️ Install edge-tts & system deps"
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq python3-pip ffmpeg
           pip3 install edge-tts --quiet
+          # Ensure Chromium is available for Remotion headless render
+          npx remotion browser ensure
 
       - name: "🎬 Run full render pipeline"
         env:
@@ -54,7 +56,6 @@ jobs:
           if [ -f "out/video.mp4" ]; then
             echo "✅ Video generated successfully!"
             ls -lh out/video.mp4
-            # Get video info with ffprobe
             ffprobe -v quiet -print_format json -show_format -show_streams out/video.mp4 | head -50 || true
           else
             echo "❌ Video file not found!"

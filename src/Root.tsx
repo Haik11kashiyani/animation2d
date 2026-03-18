@@ -1,6 +1,6 @@
-// Root.tsx — Remotion entry point: registers the StoryVideo composition
+// Root.tsx — Remotion entry point with dynamic duration from timing data
 import React from 'react';
-import { Composition } from 'remotion';
+import { Composition, staticFile } from 'remotion';
 import StoryVideo from './StoryVideo';
 
 export const RemotionRoot: React.FC = () => {
@@ -9,11 +9,29 @@ export const RemotionRoot: React.FC = () => {
       <Composition
         id="StoryVideo"
         component={StoryVideo}
-        // Default duration — will be overridden by --props or calculateMetadata
         durationInFrames={3600}
         fps={60}
         width={1080}
         height={1920}
+        calculateMetadata={async () => {
+          try {
+            const timingResponse = await fetch(staticFile('audio/timing.json'));
+            const timing = await timingResponse.json();
+            return {
+              durationInFrames: timing.totalFrames || 3600,
+              fps: 60,
+              width: 1080,
+              height: 1920,
+            };
+          } catch {
+            return {
+              durationInFrames: 3600,
+              fps: 60,
+              width: 1080,
+              height: 1920,
+            };
+          }
+        }}
       />
     </>
   );

@@ -1,6 +1,6 @@
 // SceneRenderer.tsx — Assembles all component layers for a single scene
-import React from 'react';
-import { Audio, Sequence, staticFile } from 'remotion';
+import React, { useState, useEffect } from 'react';
+import { Audio, Sequence, staticFile, continueRender, delayRender } from 'remotion';
 import Background from './Background';
 import Character from './Character';
 import CinematicCamera from './CinematicCamera';
@@ -18,6 +18,27 @@ interface SceneRendererProps {
   timing: SceneTiming;
   isLast: boolean;
 }
+
+// Safe audio component — checks if audio file exists before rendering
+const SafeAudio: React.FC<{ src: string }> = ({ src }) => {
+  const [audioExists, setAudioExists] = useState<boolean | null>(null);
+  const [handle] = useState(() => delayRender());
+
+  useEffect(() => {
+    fetch(src, { method: 'HEAD' })
+      .then(res => {
+        setAudioExists(res.ok);
+        continueRender(handle);
+      })
+      .catch(() => {
+        setAudioExists(false);
+        continueRender(handle);
+      });
+  }, [src, handle]);
+
+  if (!audioExists) return null;
+  return <Audio src={src} volume={0.9} />;
+};
 
 const SceneRenderer: React.FC<SceneRendererProps> = ({
   scene,
@@ -76,7 +97,7 @@ const SceneRenderer: React.FC<SceneRendererProps> = ({
         />
       </PostProcessing>
 
-      {/* Layer 4: Particles (outside post-processing for clarity) */}
+      {/* Layer 4: Particles */}
       <ParticleSystem
         type={scene.particles}
         color={scene.background.accentColor}
@@ -106,13 +127,10 @@ const SceneRenderer: React.FC<SceneRendererProps> = ({
         />
       )}
 
-      {/* Layer 7: Narration audio */}
-      <Audio
-        src={staticFile(`audio/${timing.audioFile}`)}
-        volume={1}
-      />
+      {/* Layer 7: Narration audio (safe — won't crash if file missing) */}
+      <SafeAudio src={staticFile(`audio/${timing.audioFile}`)} />
 
-      {/* Layer 8: Transition to next scene (at the end) */}
+      {/* Layer 8: Transition to next scene */}
       {!isLast && (
         <Sequence from={durationFrames - transitionDuration} durationInFrames={transitionDuration}>
           <Transition
