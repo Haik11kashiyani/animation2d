@@ -81,9 +81,17 @@ IMPORTANT RULES:
 - Make it viral-worthy — emotional, unexpected, visually stunning
 - Return ONLY the JSON, no other text`;
 
+// Rate limiter: max 2 API calls per minute (Gemini free tier safety)
+const RATE_LIMIT_DELAY_MS = 35000; // 35 seconds between calls = max ~1.7 calls/min
+
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 async function generateStory() {
   console.log('🎬 Generating cinematic story...');
   console.log(`📝 Topic: "${TOPIC}"`);
+  console.log(`⏱️ Rate limit: max 2 Gemini API calls per minute (${RATE_LIMIT_DELAY_MS / 1000}s cooldown between retries)`);
 
   const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
   const model = genAI.getGenerativeModel({
@@ -102,6 +110,13 @@ async function generateStory() {
 
   while (attempts < maxAttempts) {
     attempts++;
+
+    // Rate limit: wait before retry (skip wait on first attempt)
+    if (attempts > 1) {
+      console.log(`⏳ Rate limit cooldown: waiting ${RATE_LIMIT_DELAY_MS / 1000}s before retry...`);
+      await sleep(RATE_LIMIT_DELAY_MS);
+    }
+
     try {
       console.log(`🔄 Attempt ${attempts}/${maxAttempts}...`);
       const result = await model.generateContent(PROMPT);
@@ -122,6 +137,13 @@ async function generateStory() {
       break;
     } catch (error) {
       console.error(`⚠️ Attempt ${attempts} failed: ${error.message}`);
+
+      // If rate-limited by Google, wait extra
+      if (error.message?.includes('429') || error.message?.includes('RESOURCE_EXHAUSTED')) {
+        console.log(`🚦 Rate limit hit! Waiting 60s before next attempt...`);
+        await sleep(60000);
+      }
+
       if (attempts >= maxAttempts) {
         console.error('❌ All attempts failed. Using fallback story.');
         story = getFallbackStory();
