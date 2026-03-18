@@ -84,6 +84,8 @@ const SceneRenderer: React.FC<SceneRendererProps> = ({
               scale={char.scale}
               accentColor={scene.background.accentColor}
               durationFrames={durationFrames}
+              characterCount={scene.characters.length}
+              words={timing.words}
             />
           ))}
         </CinematicCamera>
