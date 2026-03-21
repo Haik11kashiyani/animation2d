@@ -1,29 +1,15 @@
 {
   "name": "animation2d",
   "version": "1.0.0",
-  "description": "Automated production-level 2D animation pipeline powered by AI",
+  "description": "Automated production-level 2D animation pipeline powered by AI (Blender Headless)",
   "type": "module",
   "scripts": {
-    "dev": "npx remotion studio",
-    "render": "node scripts/render-video.mjs",
+    "render": "node scripts/render-pipeline.mjs",
     "generate-story": "node scripts/generate-story.mjs",
-    "generate-audio": "node scripts/generate-audio.mjs",
-    "build": "npx remotion render StoryVideo out/video.mp4"
+    "generate-audio": "node scripts/generate-audio.mjs"
   },
   "dependencies": {
     "@google/generative-ai": "^0.21.0",
-    "@remotion/cli": "4.0.242",
-    "@remotion/lottie": "^4.0.242",
-    "@remotion/renderer": "4.0.242",
-    "lottie-web": "^5.13.0",
-    "music-metadata": "^10.6.1",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "remotion": "4.0.242"
-  },
-  "devDependencies": {
-    "@types/react": "^18.3.12",
-    "@types/react-dom": "^18.3.1",
-    "typescript": "^5.7.2"
+    "music-metadata": "^10.6.1"
   }
 }

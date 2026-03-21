@@ -1,5 +1,4 @@
-// render-video.mjs — End-to-end orchestrator: story → audio → render
-// Uses spawn (no timeout) for the long render step to avoid ETIMEDOUT
+// render-pipeline.mjs — End-to-end orchestrator: story (Gemini) → audio (TTS) → render (Blender)
 import { execSync, spawn } from 'child_process';
 import { readFileSync, existsSync, mkdirSync, statSync } from 'fs';
 import { resolve, dirname } from 'path';
@@ -8,7 +7,7 @@ import { fileURLToPath } from 'url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
 
-// Short-lived commands (story gen, audio gen) — use execSync with generous timeout
+// Short-lived commands (story gen, audio gen)
 function run(command, label) {
   console.log(`\n${'='.repeat(60)}`);
   console.log(`🚀 ${label}`);
@@ -18,8 +17,8 @@ function run(command, label) {
     execSync(command, {
       cwd: ROOT,
       stdio: 'inherit',
-      env: { ...process.env, NODE_OPTIONS: '--max-old-space-size=4096' },
-      timeout: 5 * 60 * 1000, // 5 min — enough for story/audio gen
+      env: { ...process.env },
+      timeout: 5 * 60 * 1000,
     });
     console.log(`\n✅ ${label} — complete\n`);
   } catch (error) {
@@ -29,19 +28,20 @@ function run(command, label) {
   }
 }
 
-// Long-lived render — uses spawn with NO timeout (runs until workflow kills it)
+// Long-lived render (Blender generation)
 function runLongProcess(command, label) {
   return new Promise((resolvePromise, reject) => {
     console.log(`\n${'='.repeat(60)}`);
     console.log(`🚀 ${label}`);
     console.log(`${'='.repeat(60)}\n`);
-    console.log(`⏳ No timeout — will run until GitHub Actions workflow limit (40 min)\n`);
 
     const [cmd, ...args] = command.split(' ');
+    // Adjust command slightly for Windows vs Linux/Mac due to Blender path variations
+    // Assuming 'blender' is in PATH. The GH Action will add it.
     const child = spawn(cmd, args, {
       cwd: ROOT,
       stdio: 'inherit',
-      env: { ...process.env, NODE_OPTIONS: '--max-old-space-size=4096' },
+      env: { ...process.env },
       shell: true,
     });
 
@@ -66,10 +66,10 @@ function runLongProcess(command, label) {
 async function main() {
   console.log(`
 ╔════════════════════════════════════════════════════════╗
-║    🎬  2D ANIMATION PIPELINE  —  PRODUCTION RENDER    ║
-║              60fps · 1080×1920 · No Limits            ║
+║    🎬  2D BLENDER ANIMATION  —  HEADLESS PIPELINE      ║
+║           Python API · Eevee Renderer                 ║
 ╠════════════════════════════════════════════════════════╣
-║  Story Gen ➜ Audio Gen ➜ Remotion Render ➜ Video MP4  ║
+║  Story Gen ➜ Audio Gen ➜ Headless Blender ➜ Video MP4 ║
 ╚════════════════════════════════════════════════════════╝
   `);
 
@@ -78,7 +78,6 @@ async function main() {
   // Step 1: Generate story with AI
   run('node scripts/generate-story.mjs', 'Step 1/3 — Generating AI Story (Gemini)');
 
-  // Verify story was generated
   const storyPath = resolve(ROOT, 'public', 'story.json');
   if (!existsSync(storyPath)) {
     console.error('❌ Story generation failed — public/story.json not found');
@@ -90,16 +89,13 @@ async function main() {
   // Step 2: Generate narration audio
   run('node scripts/generate-audio.mjs', 'Step 2/3 — Generating Narration Audio (edge-tts)');
 
-  // Verify timing was generated
   const timingPath = resolve(ROOT, 'public', 'audio', 'timing.json');
   if (!existsSync(timingPath)) {
     console.error('❌ Audio generation failed — public/audio/timing.json not found');
     process.exit(1);
   }
   const timing = JSON.parse(readFileSync(timingPath, 'utf-8'));
-  const estimatedMinutes = Math.ceil(timing.totalFrames / 100); // ~100 frames/min on CI
   console.log(`🎙️ Audio: ${timing.scenes?.length || 0} scene tracks, ${timing.totalFrames} total frames`);
-  console.log(`⏱️ Estimated render time: ~${estimatedMinutes} minutes at 60fps`);
 
   // Ensure output directory exists
   const outDir = resolve(ROOT, 'out');
@@ -107,23 +103,10 @@ async function main() {
     mkdirSync(outDir, { recursive: true });
   }
 
-  // Step 3: Render video with Remotion — uses spawn (NO TIMEOUT)
-  const renderCommand = [
-    'npx remotion render',
-    'StoryVideo',
-    'out/video.mp4',
-    '--codec=h264',
-    '--crf=18',                // High quality
-    '--pixel-format=yuv420p',  // Maximum compatibility
-    '--log=verbose',
-    '--gl=angle',              // Required for headless CI (no GPU)
-    '--concurrency=2',         // 2 threads for faster render
-    '--timeout=120000',        // 120s timeout per frame
-    '--ignore-certificate-errors',
-    '--disable-web-security',
-  ].join(' ');
-
-  await runLongProcess(renderCommand, 'Step 3/3 — Rendering 60fps 2D Animation Video (Remotion)');
+  // Step 3: Render video with Headless Blender
+  // Run blender in background mode (-b), execute Python script (-P)
+  const renderCommand = 'blender -b -P scripts/render-blender.py';
+  await runLongProcess(renderCommand, 'Step 3/3 — Rendering Video (Blender Python API)');
 
   // Done
   const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
