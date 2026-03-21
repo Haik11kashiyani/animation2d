@@ -59,6 +59,54 @@ def create_orthographic_camera():
     cam_obj.rotation_euler = (math.radians(90), 0, 0)
     return cam_obj
 
+def create_animated_blob_bg(name, location, scale, color_hex, frame_start, frame_end):
+    # Create high-res grid for organic displacement (Blob effect)
+    bpy.ops.mesh.primitive_grid_add(x_subdivisions=50, y_subdivisions=50, size=1)
+    obj = bpy.context.active_object
+    obj.name = name
+    obj.location = location
+    obj.scale = scale
+    obj.rotation_euler = (math.radians(90), 0, 0)
+    
+    # Smooth shading
+    bpy.ops.object.shade_smooth()
+    
+    # Emission Material (flat stylized color)
+    mat = bpy.data.materials.new(name=f"{name}_Mat")
+    mat.use_nodes = True
+    nodes = mat.node_tree.nodes
+    nodes.clear()
+    emission = nodes.new(type='ShaderNodeEmission')
+    emission.inputs[0].default_value = hex_to_rgb(color_hex)
+    output = nodes.new(type='ShaderNodeOutputMaterial')
+    mat.node_tree.links.new(emission.outputs[0], output.inputs[0])
+    obj.data.materials.append(mat)
+    
+    # Procedural Cloud Texture for Displacement
+    tex = bpy.data.textures.new(f"{name}_Tex", type='CLOUDS')
+    tex.noise_scale = 1.5
+    
+    # Displace Modifier
+    mod = obj.modifiers.new("Displace", 'DISPLACE')
+    mod.texture = tex
+    mod.strength = 1.5
+    
+    # Animate displacement using an Empty
+    empty = bpy.data.objects.new(f"{name}_Empty", None)
+    bpy.context.collection.objects.link(empty)
+    empty.location = location
+    
+    mod.texture_coords = 'OBJECT'
+    mod.texture_coords_object = empty
+    
+    # Animate Empty moving on Z axis so the blob shifts organically (Vertex Paint/Displace style)
+    empty.keyframe_insert(data_path="location", frame=frame_start)
+    empty.location.z += 10.0
+    empty.keyframe_insert(data_path="location", frame=frame_end)
+    
+    return obj
+
+
 def create_plane(name, location, scale, color_hex):
     bpy.ops.mesh.primitive_plane_add(size=1)
     obj = bpy.context.active_object
@@ -119,10 +167,29 @@ def create_grease_pencil_stroke(name, location, radius, color_hex):
         
     gp_obj.rotation_euler = (math.radians(90), 0, 0)
     
-    # Add NOISE modifier to make it "boil" (hand-drawn animation feel)
-    mod = gp_obj.grease_pencil_modifiers.new("Noise", 'GP_NOISE')
-    mod.factor = 0.5
-    mod.step = 2 # change shape every 2 frames for classic anime boiling
+    # 1. NOISE modifier: make it "boil" (hand-drawn animation feel)
+    mod_noise = gp_obj.grease_pencil_modifiers.new("Noise", 'GP_NOISE')
+    mod_noise.factor = 0.5
+    mod_noise.step = 2 
+    
+    # 2. BUILD modifier: Animate stroke appearing frame-by-frame
+    mod_build = gp_obj.grease_pencil_modifiers.new("Build", 'GP_BUILD')
+    mod_build.mode = 'CONCURRENT'
+    mod_build.start_delay = 5
+    mod_build.length = 30 # Draws over 30 frames
+    
+    # 3. ARRAY modifier: Replicate geometric shapes (Kaleidoscope)
+    mod_array = gp_obj.grease_pencil_modifiers.new("Array", 'GP_ARRAY')
+    mod_array.count = 6
+    mod_array.use_relative_offset = False
+    
+    empty_rot = bpy.data.objects.new(f"{name}_ArrayTarget", None)
+    bpy.context.collection.objects.link(empty_rot)
+    empty_rot.location = location
+    # Rotate 60 degrees around Y (since GP is rotated 90 on X)
+    empty_rot.rotation_euler = (0, math.radians(60), 0)
+    mod_array.use_object_offset = True
+    mod_array.offset_object = empty_rot
     
     return gp_obj
 
@@ -214,11 +281,31 @@ def build_scene():
         sec_color = bg_colors.get('secondaryColor', '#444444')
         acc_color = bg_colors.get('accentColor', '#FFFFFF')
         
-        # 1. Deep Background Layer (Z=5)
-        bg = create_plane(f"BG_{idx}", (x_offset, 5, 0), (7, 12, 1), pri_color)
+        # 1. Deep Background Layer (Animated Organic Blob Z=5)
+        # Using the Displace technique with cloud textures to create shifting organic shapes
+        bg = create_animated_blob_bg(f"BG_{idx}", (x_offset, 5, 0), (7, 12, 1), pri_color, frame_start, frame_end)
         
         # 2. Midground Layer / Mountains/City silhouette (Z=3)
         mid = create_plane(f"Mid_{idx}", (x_offset, 3, -3), (8, 4, 1), sec_color)
+        
+        # Add basic Line Art to midground object via Freestyle or Solidify
+        # For a Line Art effect on geometry, we duplicate the object and invert faces
+        # (This is a classic anime Line Art trick in Eevee without slow modifiers)
+        outlinemat = bpy.data.materials.new(name=f"OutlineMat_{idx}")
+        outlinemat.use_nodes = True
+        out_nodes = outlinemat.node_tree.nodes
+        out_nodes.clear()
+        out_emission = out_nodes.new(type='ShaderNodeEmission')
+        out_emission.inputs[0].default_value = (0,0,0,1) # Black outline
+        out_output = out_nodes.new(type='ShaderNodeOutputMaterial')
+        outlinemat.node_tree.links.new(out_emission.outputs[0], out_output.inputs[0])
+        outlinemat.use_backface_culling = True 
+
+        mod_solid = mid.modifiers.new("LineArt_Solidify", 'SOLIDIFY')
+        mod_solid.thickness = -0.1
+        mod_solid.use_flip_normals = True
+        mid.data.materials.append(outlinemat)
+        mod_solid.material_offset = 1
         
         # 3. Character Blocks (Z=1)
         # Calculate positions
