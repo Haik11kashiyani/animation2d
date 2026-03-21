@@ -354,21 +354,21 @@ def build_scene():
         cam.keyframe_insert(data_path="location", frame=frame_start)
         
         if scene_data.get('camera') == 'zoomIn':
-            cam.ortho_scale = 10.0
-            cam.keyframe_insert(data_path="ortho_scale", frame=frame_start)
-            cam.ortho_scale = 8.0
-            cam.keyframe_insert(data_path="ortho_scale", frame=frame_end)
+            cam.data.ortho_scale = 10.0
+            cam.data.keyframe_insert(data_path="ortho_scale", frame=frame_start)
+            cam.data.ortho_scale = 8.0
+            cam.data.keyframe_insert(data_path="ortho_scale", frame=frame_end)
         elif scene_data.get('camera') == 'zoomOut':
-            cam.ortho_scale = 8.0
-            cam.keyframe_insert(data_path="ortho_scale", frame=frame_start)
-            cam.ortho_scale = 10.0
-            cam.keyframe_insert(data_path="ortho_scale", frame=frame_end)
+            cam.data.ortho_scale = 8.0
+            cam.data.keyframe_insert(data_path="ortho_scale", frame=frame_start)
+            cam.data.ortho_scale = 10.0
+            cam.data.keyframe_insert(data_path="ortho_scale", frame=frame_end)
         else:
             # Default Slow Push
-            cam.ortho_scale = 10.0
-            cam.keyframe_insert(data_path="ortho_scale", frame=frame_start)
-            cam.ortho_scale = 9.5
-            cam.keyframe_insert(data_path="ortho_scale", frame=frame_end)
+            cam.data.ortho_scale = 10.0
+            cam.data.keyframe_insert(data_path="ortho_scale", frame=frame_start)
+            cam.data.ortho_scale = 9.5
+            cam.data.keyframe_insert(data_path="ortho_scale", frame=frame_end)
             
         current_frame += duration_frames
 
