@@ -82,6 +82,77 @@ def create_plane(name, location, scale, color_hex):
     obj.data.materials.append(mat)
     return obj
 
+def create_grease_pencil_stroke(name, location, radius, color_hex):
+    gp_data = bpy.data.grease_pencils.new(name)
+    gp_obj = bpy.data.objects.new(name, gp_data)
+    bpy.context.collection.objects.link(gp_obj)
+    gp_obj.location = location
+    
+    # Material
+    mat = bpy.data.materials.new(name=f"{name}_GP_Mat")
+    bpy.data.materials.create_gpencil_data(mat)
+    mat.grease_pencil.color = hex_to_rgb(color_hex)
+    mat.grease_pencil.fill_color = hex_to_rgb(color_hex)
+    mat.grease_pencil.show_fill = False
+    mat.grease_pencil.show_stroke = True
+    gp_data.materials.append(mat)
+    
+    # Layer & Frame
+    gp_layer = gp_data.layers.new("Lines", set_active=True)
+    gp_frame = gp_layer.frames.new(1)
+    
+    # Add abstract strokes (a sketchy spiral/orbit)
+    stroke = gp_frame.strokes.new()
+    stroke.display_mode = '3DSPACE'
+    stroke.line_width = 80
+    
+    num_points = 40
+    stroke.points.add(count=num_points)
+    for i in range(num_points):
+        # 3 loops spiral
+        angle = (i / float(num_points)) * math.pi * 2 * 3 
+        r = radius * (1 - i/float(num_points))
+        x = math.cos(angle) * r
+        y = math.sin(angle) * r
+        stroke.points[i].co = (x, y, 0)
+        stroke.points[i].pressure = 1.0
+        
+    gp_obj.rotation_euler = (math.radians(90), 0, 0)
+    
+    # Add NOISE modifier to make it "boil" (hand-drawn animation feel)
+    mod = gp_obj.grease_pencil_modifiers.new("Noise", 'GP_NOISE')
+    mod.factor = 0.5
+    mod.step = 2 # change shape every 2 frames for classic anime boiling
+    
+    return gp_obj
+
+def create_cinematic_text(name, text_body, location, color_hex):
+    font_curve = bpy.data.curves.new(type="FONT", name=name)
+    font_curve.body = text_body
+    font_curve.align_x = 'CENTER'
+    font_curve.align_y = 'CENTER'
+    font_curve.extrude = 0.05
+    font_obj = bpy.data.objects.new(name, font_curve)
+    bpy.context.collection.objects.link(font_obj)
+    font_obj.location = location
+    font_obj.rotation_euler = (math.radians(90), 0, 0)
+    
+    # Material
+    mat = bpy.data.materials.new(name=f"{name}_Text_Mat")
+    mat.use_nodes = True
+    nodes = mat.node_tree.nodes
+    nodes.clear()
+    emission = nodes.new(type='ShaderNodeEmission')
+    emission.inputs[0].default_value = hex_to_rgb(color_hex)
+    emission.inputs[1].default_value = 5.0 # Glow strength
+    output = nodes.new(type='ShaderNodeOutputMaterial')
+    mat.node_tree.links.new(emission.outputs[0], output.inputs[0])
+    font_obj.data.materials.append(mat)
+    
+    # Scale text to fit screen
+    font_obj.scale = (0.5, 0.5, 0.5)
+    return font_obj
+
 def setup_audio_sequencer(timing_data):
     if not bpy.context.scene.sequence_editor:
         bpy.context.scene.sequence_editor_create()
@@ -159,17 +230,31 @@ def build_scene():
             elif char['position'] == 'right': pos_x += 1.5
             
             # Simple Character Representation (Colored Box)
-            # A full procedural 2D grease-pencil character requires pre-made assets. 
-            # We use primitive planes representing 2D cutouts for now.
             c_scale = char.get('scale', 1.0)
             c_plane = create_plane(f"Char_{idx}_{c_idx}", (pos_x, 1, -2), (1.5 * c_scale, 3.5 * c_scale, 1), acc_color)
+            
+            # Add abstract boiling grease pencil geometry around the character for that 2D anime feel
+            gp_stroke = create_grease_pencil_stroke(f"Char_Energy_{idx}_{c_idx}", (pos_x, 1, -1.9), 2.0 + c_scale, acc_color)
             
             # Simple Bob Animation for Character
             c_plane.keyframe_insert(data_path="location", frame=frame_start)
             c_plane.location.z += 0.2
-            c_plane.keyframe_insert(data_path="location", frame=frame_start + (duration_frames//2))
+            c_plane.keyframe_insert(data_path="location", frame=int(frame_start + (duration_frames/2)))
             c_plane.location.z -= 0.2
             c_plane.keyframe_insert(data_path="location", frame=frame_end)
+
+            # Bob the Grease Pencil geometry synchronously
+            gp_stroke.keyframe_insert(data_path="location", frame=frame_start)
+            gp_stroke.location.z += 0.2
+            gp_stroke.keyframe_insert(data_path="location", frame=int(frame_start + (duration_frames/2)))
+            gp_stroke.location.z -= 0.2
+            gp_stroke.keyframe_insert(data_path="location", frame=frame_end)
+
+        # 4. Cinematic Text overlay (Z=-1 close to camera)
+        title_text = create_cinematic_text(f"Text_{idx}", scene_data.get('title', 'Scene'), (x_offset, -3, -1), acc_color)
+        title_text.keyframe_insert(data_path="location", frame=frame_start)
+        title_text.location.z += 0.5
+        title_text.keyframe_insert(data_path="location", frame=frame_end)
 
         # Animate Camera to this scene bounds
         # Keep camera statically over this scene, but we can do slow pans
