@@ -30,7 +30,12 @@ def clear_scene():
 
 def setup_render_settings(total_frames, fps=60):
     scene = bpy.context.scene
-    scene.render.engine = 'BLENDER_EEVEE_NEXT' if hasattr(bpy.context.scene.render, 'engine') and 'BLENDER_EEVEE_NEXT' in [i.identifier for i in bpy.types.RenderEngine.bl_rna.properties['engine'].enum_items] else 'BLENDER_EEVEE'
+    
+    # Try using Eevee Next (Blender 4.2+), fallback to standard Eevee
+    try:
+        scene.render.engine = 'BLENDER_EEVEE_NEXT'
+    except Exception:
+        scene.render.engine = 'BLENDER_EEVEE'
     
     scene.render.resolution_x = 1080
     scene.render.resolution_y = 1920
