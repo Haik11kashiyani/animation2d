@@ -36,6 +36,15 @@ def setup_render_settings(total_frames, fps=60):
         scene.render.engine = 'BLENDER_EEVEE_NEXT'
     except Exception:
         scene.render.engine = 'BLENDER_EEVEE'
+        
+    # Heavily optimize EEVEE render speed for flat 2D graphics
+    try:
+        scene.eevee.taa_render_samples = 16
+        scene.eevee.taa_samples = 8
+        scene.eevee.use_gtao = True
+        scene.eevee.use_bloom = True
+    except Exception as e:
+        print(f"Notice: skipped Eevee sample optimization. {e}")
     
     scene.render.resolution_x = 1080
     scene.render.resolution_y = 1920
