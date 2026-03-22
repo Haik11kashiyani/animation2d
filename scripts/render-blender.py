@@ -7,7 +7,7 @@ import random
 
 ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 STORY_PATH = os.path.join(ROOT_DIR, "public", "story.json")
-TIMING_PATH = os.path.join(ROOT_DIR, "public", "timing.json")
+TIMING_PATH = os.path.join(ROOT_DIR, "public", "audio", "timing.json")
 OUT_PATH = os.path.join(ROOT_DIR, "out", "video.mp4")
 
 def hex_to_rgb(hex_code):
