@@ -41,7 +41,7 @@ def setup_render_settings(total_frames, fps=60):
     try:
         scene.eevee.taa_render_samples = 16
         scene.eevee.taa_samples = 8
-        scene.eevee.use_gtao = True
+        scene.eevee.use_gtao = False # 2D style doesn't need ambient occlusion (very expensive on CPU)
         scene.eevee.use_bloom = True
     except Exception as e:
         print(f"Notice: skipped Eevee sample optimization. {e}")

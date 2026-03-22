@@ -58,7 +58,7 @@ jobs:
     name: "🎭 Render Scene ${{ matrix.scene_idx }}"
     needs: setup-data
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
     strategy:
       matrix:
         scene_idx: [0, 1, 2, 3, 4, 5]
