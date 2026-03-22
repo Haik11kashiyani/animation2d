@@ -15,11 +15,10 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  render:
-    name: "🎭 Generate & Render 2D Animation"
+  setup-data:
+    name: "🛠️ Setup Data & Audio"
     runs-on: ubuntu-latest
-    timeout-minutes: 120
-
+    timeout-minutes: 10
     steps:
       - name: "📥 Checkout repository"
         uses: actions/checkout@v4
@@ -30,7 +29,7 @@ jobs:
           node-version: "20"
           cache: "npm"
 
-      - name: "Setup Python"
+      - name: "Setup Python (Edge TTS)"
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
@@ -40,58 +39,113 @@ jobs:
           npm ci
           pip install edge-tts
 
-      - name: "Install System Dependencies & Blender"
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq ffmpeg blender xvfb
-          # xvfb is a virtual framebuffer, useful if Blender still complains about missing display
-
-      - name: "Generate & Render 2D Animation inside Blender"
+      - name: "Generate Story & Audio"
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           STORY_TOPIC: ${{ github.event.inputs.topic || 'A cinematic mystery with surreal 2D art' }}
-        # Run using xvfb-run to provide a fake X11 display context (fixes Eevee OpenGL errors)
-        run: xvfb-run -a npm run render
-
-      - name: "📊 Video info"
-        if: success()
         run: |
-          if [ -f "out/video.mp4" ]; then
-            echo "✅ Video generated successfully!"
-            ls -lh out/video.mp4
-            ffprobe -v quiet -print_format json -show_format -show_streams out/video.mp4 | head -50 || true
-          else
-            echo "❌ Video file not found!"
-            exit 1
-          fi
+          npm run generate-story
+          npm run generate-audio
 
-      - name: "📤 Upload video artifact"
-        if: success()
+      - name: "📤 Upload Shared Data"
+        uses: actions/upload-artifact@v4
+        with:
+          name: shared-data
+          path: public/
+          retention-days: 1
+
+  render-matrix:
+    name: "🎭 Render Scene ${{ matrix.scene_idx }}"
+    needs: setup-data
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      matrix:
+        scene_idx: [0, 1, 2, 3, 4, 5]
+    steps:
+      - name: "📥 Checkout repository"
+        uses: actions/checkout@v4
+
+      - name: "📥 Download Shared Data"
+        uses: actions/download-artifact@v4
+        with:
+          name: shared-data
+          path: public/
+
+      - name: "Install System Dependencies & Blender"
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq blender xvfb
+
+      - name: "Render Scene in Headless Blender"
+        run: |
+          mkdir -p out
+          xvfb-run -a blender -b -P scripts/render-blender.py -- --scene-idx ${{ matrix.scene_idx }}
+
+      - name: "📤 Upload Scene Video"
+        uses: actions/upload-artifact@v4
+        with:
+          name: scene-video-${{ matrix.scene_idx }}
+          path: out/scene_${{ matrix.scene_idx }}.mp4
+          retention-days: 1
+
+  merge-video:
+    name: "🎬 Assemble Final Video"
+    needs: render-matrix
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: "📥 Checkout repository"
+        uses: actions/checkout@v4
+
+      - name: "📥 Download Shared Data"
+        uses: actions/download-artifact@v4
+        with:
+          name: shared-data
+          path: public/
+
+      - name: "📥 Download All Rendered Scenes"
+        uses: actions/download-artifact@v4
+        with:
+          pattern: scene-video-*
+          path: out/
+          merge-multiple: true
+
+      - name: "Install FFMPEG"
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg
+
+      - name: "Stitch Videos Together"
+        run: |
+          # Create ffmpeg concat list dynamically
+          echo "file 'scene_0.mp4'" > out/list.txt
+          echo "file 'scene_1.mp4'" >> out/list.txt
+          echo "file 'scene_2.mp4'" >> out/list.txt
+          echo "file 'scene_3.mp4'" >> out/list.txt
+          echo "file 'scene_4.mp4'" >> out/list.txt
+          echo "file 'scene_5.mp4'" >> out/list.txt
+          
+          # Run concat demuxer (lossless concat)
+          cd out
+          ffmpeg -f concat -safe 0 -i list.txt -c copy final.mp4
+          
+          echo "✅ Final stitched video generated!"
+          ls -lh final.mp4
+
+      - name: "📤 Upload final artifact"
         uses: actions/upload-artifact@v4
         with:
           name: "animation-video-${{ github.run_number }}"
-          path: out/video.mp4
+          path: out/final.mp4
           retention-days: 90
-          if-no-files-found: error
-
-      - name: "📤 Upload story data (debug)"
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: "story-data-${{ github.run_number }}"
-          path: |
-            public/story.json
-            public/audio/timing.json
-          retention-days: 30
-          if-no-files-found: warn
 
       - name: "🎉 Summary"
-        if: success()
         run: |
           STORY_TITLE=$(cat public/story.json | python3 -c "import sys,json;print(json.load(sys.stdin).get('title','Unknown'))" 2>/dev/null || echo "Unknown")
-          echo "## 🎬 Animation Rendered Successfully!" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## 🎬 Animation Matrix Rendered Successfully!" >> $GITHUB_STEP_SUMMARY
           echo "**Title:** ${STORY_TITLE}" >> $GITHUB_STEP_SUMMARY
           echo "**Topic:** ${{ github.event.inputs.topic || 'AI-generated random story' }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "📥 Download the video from the **Artifacts** section above." >> $GITHUB_STEP_SUMMARY
+          echo "All 6 scenes were dynamically processed on independent parallel servers." >> $GITHUB_STEP_SUMMARY
+          echo "📥 Download the final stitched video from the **Artifacts** section above." >> $GITHUB_STEP_SUMMARY

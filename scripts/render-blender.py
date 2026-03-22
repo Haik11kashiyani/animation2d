@@ -258,7 +258,7 @@ def setup_audio_sequencer(timing_data):
             
         start_frame += duration_frames
 
-def build_scene():
+def build_scene(scene_idx_to_render=None):
     print("Loading Story & Timing Data...")
     with open(STORY_PATH, 'r') as f:
         story = json.load(f)
@@ -279,6 +279,8 @@ def build_scene():
     
     # Procedurally build 2D layers for each scene bounds
     current_frame = 1
+    target_frame_start = 1
+    target_frame_end = total_frames
     
     # We will lay out the scenes on the X axis, one per scene, and animate the camera jumping to them.
     # This avoids toggling visibility constantly.
@@ -288,6 +290,11 @@ def build_scene():
         duration_frames = scene_timing['durationFrames']
         frame_start = current_frame
         frame_end = current_frame + duration_frames - 1
+        
+        if scene_idx_to_render is not None and scene_idx_to_render == idx:
+            target_frame_start = frame_start
+            target_frame_end = frame_end
+            
         x_offset = idx * scene_width_offset
         
         bg_colors = scene_data.get('background', {})
@@ -382,10 +389,28 @@ def build_scene():
         current_frame += duration_frames
 
     print(f"Blender Scene Setup Complete. Total Frames: {total_frames}")
+    
+    if scene_idx_to_render is not None:
+        bpy.context.scene.frame_start = target_frame_start
+        bpy.context.scene.frame_end = target_frame_end
+        bpy.context.scene.render.filepath = os.path.join(ROOT_DIR, "out", f"scene_{scene_idx_to_render}.mp4")
+        print(f"Matrix Mode: Rendering ONLY Scene {scene_idx_to_render} (Frames {target_frame_start} to {target_frame_end})")
+    else:
+        bpy.context.scene.render.filepath = OUT_PATH
+        print("Rendering full sequential timeline.")
 
 if __name__ == "__main__":
     try:
-        build_scene()
+        import sys
+        scene_idx = None
+        if "--" in sys.argv:
+            argv = sys.argv[sys.argv.index("--") + 1:]
+            if "--scene-idx" in argv:
+                idx_pos = argv.index("--scene-idx") + 1
+                if idx_pos < len(argv):
+                    scene_idx = int(argv[idx_pos])
+                    
+        build_scene(scene_idx)
         print("Starting Render...")
         bpy.ops.render.render(animation=True)
         print("Render Complete!")
